@@ -1,0 +1,104 @@
+#
+library(readxl)
+kDATA <- read_excel("R/EXL voor r/kalibratielijn std model_R kl_ex_m.xlsx", 
+                    range = "A1:B12")
+mDATA <- read_excel("R/EXL voor r/kalibratielijn std model_R kl_ex_m.xlsx", 
+                    range = "C1:C7")
+
+#function plotting calibration curve + residuals.
+# x = xdata, y = ydata, a = xlable, b = Ylable
+Plot_kal<-function(x,y,a,b) {
+  
+  #modeling data
+  Model_f<- lm(y~x, data=kDATA)
+  co<-coef(Model_f)
+  r2<-cor(x,y)^2
+  Resd<- resid(Model_f)
+  
+  #legend modeling
+  r2round<-round(r2, digits = 5)
+  "RR"<-paste("R^2 =",
+              r2round)
+  co1round<-round(co[1], digits = 5)
+  co2round<-round(co[2], digits = 5)
+  Formule<- paste("y =",       
+                  co2round,
+                  "* x",
+                  "+",
+                  co1round)
+  
+  #plotting graph
+  par(mfrow=c(1,2))
+  plot(x,y,
+       col = "#cc0000",
+       pch = 19,
+       main = "KALIBRATIECURVE",
+       xlab = a,
+       ylab = b)
+  abline(Model_f, lwd=2)
+  legend("bottomright",legend=c(Formule, RR))
+  
+  #residuals plotting
+  plot(x, Resd, 
+       col = "#cc0000",
+       pch = 19,
+       main = "Residual plot",
+       xlab = "X",
+       ylab = "Residual")
+  abline(h=0, lwd=2)
+}
+#function calculating unknown sample data
+# x = xdata, y = ydata, m = monster data
+inter_m <-function(x,y,m){
+  
+  Model_f<- lm(y~x, data=kDATA)
+  co<-coef(Model_f)
+  
+  #monsterwaarden berekenen
+  monster<- function(a,b,m) {
+    (m-b)/a
+  }
+  listmw<-(monster(co[2],co[1],mDATA))
+  
+  #betrouwbaarheidsintervallen 
+  #waarden
+  summ<-summary(lm(kDATA$y~kDATA$x))
+  smmco<-summ$coefficients
+  stda<-smmco[4]
+  stdb<-smmco[3]
+  resid_std_e<-summ$sigma
+  gemx<-mean(kDATA$x)
+  gemy<-mean(kDATA$y)
+  df<-length(kDATA$y)-2 
+  t<-qt(0.95,df) #vgm klopt dit?
+  sxx<-var(kDATA$x)*(length(kDATA$y)-1)
+  
+  #intervallen
+  P_inter<-function(a,b,c,d) {
+    a^2-b^2*c^2/d
+  }
+  P<-P_inter(co[2],t,resid_std_e,sxx)
+  Q_inter<-function(x) {
+    2*t^2*resid_std_e^2*gemx/sxx-2*co[2]^2*x
+  }
+  Q<-Q_inter(listmw[1])
+  R_inter<-function(x){
+    co[2]^2*x^2-t^2*resid_std_e^2*gemx^2/sxx-t^2*resid_std_e^2*(1/(df+2)+1/10000)
+  }
+  R<-R_inter(listmw[1])
+  
+  #ondergrens en boven grens bepaling
+  ondgr_schatting<-(-Q-sqrt(Q^2-4*P*R))/(2*P)
+  bovgr_schatting<-(-Q+sqrt(Q^2-4*P*R))/(2*P)
+  
+  clonder<-listmw-ondgr_schatting
+  clboven<-bovgr_schatting-listmw
+  
+  #tablmaken
+  dataf<-data.frame(listmw,clonder,clboven)
+  colnames(dataf)<-c("Monster waarde","95%cl lower","95%cl upper")
+  dataf
+}
+
+Plot_kal(kDATA$x,kDATA$y,"Concentratie mg/L","ABS") #plot calcurve + resid
+inter_m(kDATA$x,kDATA$y,mDATA)                      #calc monster data
